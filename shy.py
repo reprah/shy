@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import sys, os, re
+import sys, os, re, subprocess
 
 # begin loop:
 # - reading from stdin
@@ -19,7 +19,7 @@ def main():
 		pids = []
 
 		for line in commands:
-			args = line.split()
+			args = [expand(string) for string in line.split()]
 			command = args[0]
 
 			if command in BUILTINS:
@@ -69,7 +69,8 @@ def fork_and_exec(command, args, placeholder_out, placeholder_in):
 		try:
 			os.execvp(command, args) # actual exec
 		except:
-			print "Error: command not found."
+			print "%s: command not found" % command
+			sys.exit(1) # exit child
 	return pid
 
 
@@ -88,6 +89,28 @@ def split_on_pipes(line):
 			if string != '':
 				commands.append(string.strip())
 	return commands
+
+# support different types of expansion
+def expand(string):
+	# variable expansion
+	if re.match("\$\w+", string):
+		return os.environ[string[1:]]
+
+	# arithmetic expansion
+	elif re.match("\$\(\(([\w\W\s]*)\)\)", string):
+		expr = re.match("\$\(\(([\w\W\s]*)\)\)", string).group(1)
+		return str(eval(expr))
+
+	# command expansion
+	elif re.match("\$\(([\w\W\s]*)\)", string):
+		expr = re.match("\$\(([\w\W\s]*)\)", string).group(1)
+		p = subprocess.Popen([expr], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+		# get the output of the command
+		out, _ = p.communicate()
+		return out[0:-1]
+
+	else:
+		return string
 
 def set(args):
   key, value = args.split('=')
